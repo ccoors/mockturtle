@@ -895,7 +895,7 @@ public:
    * 
    * [1] Irredundant Buffer and Splitter Insertion and Scheduling-Based Optimization for AQFP Circuits.
    * Siang-Yun Lee et. al. IWLS 2021. */
-  void optimize()
+  bool optimize()
   {
     if ( _ps.optimization_effort == buffer_insertion_params::none )
     {
@@ -907,7 +907,7 @@ public:
       std::ofstream os( filename.c_str(), std::ofstream::out );
       dump_smt_model( os );
       os.close();
-      return;
+      return run_z3( filename );
     }
     
     if ( _outdated )
@@ -921,6 +921,7 @@ public:
     } while ( updated && _ps.optimization_effort == buffer_insertion_params::until_sat );
 
     adjust_depth();
+    return true;
   }
 
 #pragma region Chunked movement
@@ -1367,8 +1368,10 @@ private:
 
     os << "\n(declare-const total Int)\n";
     os << fmt::format( "(assert (= total (+ {})))\n", fmt::join( bufs, " " ) );
-    os << fmt::format( "(assert (<= total {}))\n", upper_bound );
-    os << "(check-sat)\n(get-value (total))\n(exit)\n";
+    //os << fmt::format( "(assert (<= total {}))\n", upper_bound );
+    os << "(check-sat)\n";
+    //os << "(get-value (total))\n";
+    os << "(exit)\n";
   }
 
   void smt_constraints( std::ostream& os, node const& n, uint32_t const& max_relative_depth )
@@ -1496,6 +1499,24 @@ private:
         fn( *it2 );
       }
     }
+  }
+
+  bool run_z3( std::string const filename )
+  {
+    std::string command = fmt::format( "z3 {}", filename );
+    std::array<char, 128> buffer;
+    std::string result;
+    std::unique_ptr<FILE, decltype( &pclose )> pipe( popen( command.c_str(), "r" ), pclose );
+    if ( !pipe )
+    {
+      throw std::runtime_error( "popen() failed" );
+    }
+    while ( fgets( buffer.data(), buffer.size(), pipe.get() ) != nullptr )
+    {
+      result += buffer.data();
+    }
+
+    return ( result.substr( 0, 3 ) == "sat" );
   }
 #pragma endregion
 
