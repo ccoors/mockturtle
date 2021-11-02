@@ -899,7 +899,7 @@ public:
   {
     if ( _ps.optimization_effort == buffer_insertion_params::none )
     {
-      return;
+      return true;
     }
     else if ( _ps.optimization_effort == buffer_insertion_params::optimal )
     {
@@ -1307,11 +1307,26 @@ private:
 #pragma region Global optimal by SMT
   void dump_smt_model( std::ostream& os = std::cout )
   {
-    /* hard assumptions to bound the number of variables */
-    uint32_t const max_depth = depth() + 3;
-    uint32_t const max_relative_depth = max_depth;
+    //os << "(set-option :produce-unsat-cores true)\n";
+    os << "(set-logic QF_LIA)\n";
+    //os << "(set-option :pp.decimal true)\n";
+
     count_buffers();
-    uint32_t const upper_bound = num_buffers();
+    uint32_t max_rd_asap = 0;
+    _ntk.foreach_node( [&]( auto const& n ){
+      for ( auto it = _fanouts[n].begin(); it != _fanouts[n].end(); ++it )
+      {
+        if ( it->relative_depth > max_rd_asap )
+        {
+          std::cout << fmt::format( "[i] new max rd: node {} at level {}, rd {}\n", n, level( n ), it->relative_depth );
+          max_rd_asap = it->relative_depth;
+        }
+      }
+    });
+    /* hard assumptions to bound the number of variables */
+    uint32_t const max_depth = depth();
+    uint32_t const max_relative_depth = max_rd_asap;//max_depth;
+    uint32_t const upper_bound = 0; //num_buffers();
 
     /* declare variables for the level of each node */
     _ntk.foreach_node( [&]( auto const& n ){
@@ -1323,7 +1338,7 @@ private:
     if ( _ps.assume.balance_pos ) /* depth is a variable */
     {
       os << fmt::format( "(declare-const depth Int)\n" );
-      os << fmt::format( "(assert (<= depth {}))\n", max_depth );
+      os << fmt::format( "(assert (! (<= depth {} ) :named depth_var))\n", max_depth );
       depth = "depth";
     }
     else
@@ -1331,22 +1346,22 @@ private:
       depth = fmt::format( "{}", max_depth );
     }
     _ntk.foreach_gate( [&]( auto const& n ){
-      os << fmt::format( "(assert (<= l{} {}))\n", uint32_t( n ), depth );
-      os << fmt::format( "(assert (>= l{} 0))\n", uint32_t( n ) );
+      os << fmt::format( "(assert (! (<= l{} {} ) :named depth_upper_bound_{}))\n", uint32_t( n ), depth, n );
+      os << fmt::format( "(assert (! (>= l{} 0 ) :named depth_lower_bound_{}))\n", uint32_t( n ), n );
     });
     /* constant node is always at level 0 */
-    os << fmt::format( "(assert (= l{} 0))\n", _ntk.get_node( _ntk.get_constant( false ) ) );
+    os << fmt::format( "(assert (! (= l{} 0 ) :named set_depth_{}))\n", _ntk.get_node( _ntk.get_constant( false ) ), 0 );
     if ( _ps.assume.balance_pis ) /* PIs are at level 0 */
     {
       _ntk.foreach_pi( [&]( auto const& n ){
-        os << fmt::format( "(assert (= l{} 0))\n", n );
+        os << fmt::format( "(assert (! (= l{} 0 ) :named set_depth_{}))\n", n, n );
       });
     }
     else /* PIs are free (but still has to be within the range) */
     {
       _ntk.foreach_pi( [&]( auto const& n ){
-        os << fmt::format( "(assert (<= l{} {}))\n", uint32_t( n ), depth );
-        os << fmt::format( "(assert (>= l{} 0))\n", uint32_t( n ) );
+        os << fmt::format( "(assert (! (<= l{} {} ) :named depth_upper_bound_{}))\n", uint32_t( n ), depth, n );
+        os << fmt::format( "(assert (! (>= l{} 0 ) :named depth_lower_bound_{}))\n", uint32_t( n ), n );
       });
     }
 
@@ -1366,11 +1381,22 @@ private:
 
     // NOTE: the depth variable does not take into account the PO branching buffers
 
-    //os << "\n(declare-const total Int)\n";
-    //os << fmt::format( "(assert (= total (+ {})))\n", fmt::join( bufs, " " ) );
-    //os << fmt::format( "(assert (<= total {}))\n", upper_bound );
+    //_ntk.foreach_node( [&]( auto const& n ){
+    //  os << fmt::format( "(assert (= l{} {}))\n", n, level( n ) );
+    //});
+
+    if ( upper_bound != 0 )
+    {
+      os << "\n(declare-const total Int)\n";
+      os << fmt::format( "(assert (= total (+ {})))\n", fmt::join( bufs, " " ) );
+      os << fmt::format( "(assert (<= total {}))\n", upper_bound );
+    }
     os << "(check-sat)\n";
-    //os << "(get-value (total))\n";
+    //os << "(get-unsat-core)\n";
+    if ( upper_bound != 0 ) { os << "(get-value (total))\n"; }
+    os << "(get-value (";
+    _ntk.foreach_gate( [&]( auto const& n ){ os << " l" << n; });
+    os << "))\n";
     os << "(exit)\n";
   }
 
@@ -1391,18 +1417,18 @@ private:
       {
         if ( _ps.assume.balance_pos )
         {
-          os << fmt::format( "(assert (= bufs{} (- depth l{})))\n", n, n );
+          os << fmt::format( "(assert (! (= bufs{} (- depth l{}) ) :named single_fanout_numbuf_{}))\n", n, n, n );
         }
         else
         {
-          os << fmt::format( "(assert (= bufs{} 0))\n", n );
+          os << fmt::format( "(assert (! (= bufs{} 0 ) :named single_fanout_numbuf_{}))\n", n, n );
         }
       }
       else
       {
         node const& no = _fanouts[n].front().fanouts.front();
-        os << fmt::format( "(assert (> l{} l{}))\n", no, n );
-        os << fmt::format( "(assert (= bufs{} (- l{} l{} 1)))\n", n, no, n );
+        os << fmt::format( "(assert (! (> l{} l{} ) :named single_fanout_sequence_{}))\n", no, n, n );
+        os << fmt::format( "(assert (! (= bufs{} (- l{} l{} 1) ) :named single_fanout_numbuf_{}))\n", n, no, n, n );
       }
       return;
     }
@@ -1411,38 +1437,38 @@ private:
       /* only one splitter is needed */
       if ( _external_ref_count[n] > 0 && _ps.assume.balance_pos )
       {
-        os << fmt::format( "(assert (> depth l{}))\n", n );
-        os << fmt::format( "(assert (= bufs{} (- depth l{})))\n", n, n );
+        os << fmt::format( "(assert (! (> depth l{} ) :named one_split_po_{}))\n", n, n );
+        os << fmt::format( "(assert (! (= bufs{} (- depth l{}) ) :named one_split_po_numbuf_{}))\n", n, n, n );
       }      
       std::vector<node> fos;
       foreach_fanout( n, [&]( auto const& no ){ 
-        os << fmt::format( "(assert (> l{} (+ l{} 1)))\n", no, n );
+        os << fmt::format( "(assert (! (> l{} (+ l{} 1) ) :named one_split_sequence_{}_to_{}))\n", no, n, n, no );
         fos.emplace_back( no );
       });
       if ( !( _external_ref_count[n] > 0 && _ps.assume.balance_pos ) )
       {
         if ( fos.size() == 0 ) /* not balance PO; have multiple PO refs */
         {
-          os << fmt::format( "(assert (> depth l{}))\n", n );
-          os << fmt::format( "(assert (= bufs{} 1))\n", n );
+          os << fmt::format( "(assert (! (> depth l{} ) :named one_split_po_{}))\n", n, n );
+          os << fmt::format( "(assert (! (= bufs{} 1 ) :named one_split_po_numbuf_{}))\n", n, n );
         }
         else if ( fos.size() == 1 ) /* not balance PO; have one gate fanout and PO ref(s) */
         {
-          os << fmt::format( "(assert (= bufs{} (- l{} l{} 1)))\n", n, fos[0], n );
+          os << fmt::format( "(assert (! (= bufs{} (- l{} l{} 1) ) :named one_split_numbuf_{}))\n", n, fos[0], n, n );
         }
         else if ( fos.size() >= 2 )
         {
           /* take the max level of fanouts */
           std::string m = fmt::format( "g{}max01", n );
           os << fmt::format( "(declare-const {} Int)\n", m );
-          os << fmt::format( "(assert (= {} (ite (> l{} l{}) l{} l{})))\n", m, fos[0], fos[1], fos[0], fos[1] );
+          os << fmt::format( "(assert (! (= {} (ite (> l{} l{}) l{} l{}) ) :named assign_{}))\n", m, fos[0], fos[1], fos[0], fos[1], m );
           for ( auto i = 2; i < fos.size(); ++i )
           {
             os << fmt::format( "(declare-const {}{} Int)\n", m, i );
-            os << fmt::format( "(assert (= {}{} (ite (> {} l{}) {} l{})))\n", m, i, m, fos[i], m, fos[i] );
+            os << fmt::format( "(assert (! (= {}{} (ite (> {} l{}) {} l{}) ) :named assign_{}{}))\n", m, i, m, fos[i], m, fos[i], m, i );
             m = fmt::format( "{}{}", m, i );
           }
-          os << fmt::format( "(assert (= bufs{} (- {} l{} 1)))\n", n, m, n );
+          os << fmt::format( "(assert (! (= bufs{} (- {} l{} 1) ) :named one_split_numbuf_{}))\n", n, m, n, n );
         }
       }
       return;
@@ -1450,43 +1476,43 @@ private:
 
     /* range constraints */
     foreach_fanout( n, [&]( auto const& no ){
-      os << fmt::format( "(assert (<= l{} (+ l{} {})))\n", no, n, max_relative_depth );
-      os << fmt::format( "(assert (> l{} l{}))\n", no, n );
+      os << fmt::format( "(assert (! (<= l{} (+ l{} {}) ) :named rd_bound_{}_to_{}))\n", no, n, max_relative_depth, n, no );
+      os << fmt::format( "(assert (! (> l{} l{} ) :named sequence_{}_to_{}))\n", no, n, n, no );
     });
 
     // TODO: PO branching, PO balancing
     uint32_t l = max_relative_depth;
     /* initial case */
     os << fmt::format( "(declare-const g{}e{} Int)\n", n, l );
-    os << fmt::format( "(assert (= g{}e{} (+", n, l ); // edges at level l
+    os << fmt::format( "(assert (! (= g{}e{} (+", n, l ); // edges at level l
     foreach_fanout( n, [&]( auto const& no ){
       os << fmt::format( " (ite (= (- l{} l{}) {}) 1 0)", no, n, l );
     });
-    os << ")))\n";
+    os << fmt::format( ") ) :named assign_g{}e{}))\n", n, l );
 
     /* general case */
     for ( --l; l > 0; --l )
     {
       os << fmt::format( "(declare-const g{}b{} Int)\n", n, l ); // buffers at level l
       /* g{n}b{l} = ceil( g{n}e{l+1} / s_b ) --> s_b * ( g{n}b{l} - 1 ) < g{n}e{l+1} <= s_b * g{n}b{l} */
-      os << fmt::format( "(assert (< (* {} (- g{}b{} 1)) g{}e{}))\n", _ps.assume.splitter_capacity, n, l, n, l+1 );
-      os << fmt::format( "(assert (<= g{}e{} (* {} g{}b{})))\n", n, l+1, _ps.assume.splitter_capacity, n, l );
+      os << fmt::format( "(assert (! (< (* {} (- g{}b{} 1)) g{}e{} ) :named lbound_g{}b{}))\n", _ps.assume.splitter_capacity, n, l, n, l+1, n, l );
+      os << fmt::format( "(assert (! (<= g{}e{} (* {} g{}b{}) ) :named ubound_g{}b{}))\n", n, l+1, _ps.assume.splitter_capacity, n, l, n, l );
       os << fmt::format( "(declare-const g{}e{} Int)\n", n, l ); // edges at level l
-      os << fmt::format( "(assert (= g{}e{} (+", n, l ); 
+      os << fmt::format( "(assert (! (= g{}e{} (+", n, l ); 
       foreach_fanout( n, [&]( auto const& no ){
         os << fmt::format( " (ite (= (- l{} l{}) {}) 1 0)", no, n, l );
       });
-      os << ")))\n";
+      os << fmt::format( " g{}b{}) ) :named assign_g{}e{}))\n", n, l, n, l );
     }
 
     /* end of loop */
-    os << fmt::format( "(assert (= g{}e1 1))\n", n ); // legal
-    os << fmt::format( "(assert (= bufs{} (+", n );
+    os << fmt::format( "(assert (! (= g{}e1 1 ) :named legal_g{}e1))\n", n, n ); // legal
+    os << fmt::format( "(assert (! (= bufs{} (+", n );
     for ( l = max_relative_depth - 1; l > 0; --l )
     {
       os << fmt::format( " g{}b{}", n, l );
     }
-    os << ")));\n";
+    os << fmt::format( ") ) :named assign_bufs{}))\n", n );
   }
 
   template<class Fn>
@@ -1515,6 +1541,7 @@ private:
     {
       result += buffer.data();
     }
+    std::cout << result;
 
     return ( result.substr( 0, 3 ) == "sat" );
   }

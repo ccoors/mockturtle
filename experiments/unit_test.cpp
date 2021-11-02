@@ -10,8 +10,8 @@ int main()
 {
   using namespace mockturtle;
 
-  //std::string file = "benchmarks_aqfp/count.v";
-  std::string file = "tmp.v";
+  std::string file = "benchmarks_aqfp/count.v";
+  //std::string file = "tmp.v";
 
   mig_network mig;
   if ( lorina::read_verilog( file, verilog_reader( mig ) ) != lorina::return_code::success )
