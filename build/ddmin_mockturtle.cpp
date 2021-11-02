@@ -32,11 +32,18 @@ Result test( std::string const& str )
     std::cout << "[i] return value is " << res << " (passing)\n";
     return Result::PASS;
   }
-  else
+  else if ( res[0] == '1' )
+  {
+    std::cout << "[i] return value is " << res << " (invalid syntax)\n";
+    return Result::INCONCLUSIVE;
+  }
+  else if ( res[0] == '2' )
   {
     std::cout << "[i] return value is " << res << " (failing)\n";
     return Result::FAIL;
   }
+  std::cout << "[i] unknown return value " << res << "\n";
+  return Result::INCONCLUSIVE;
 }
 
 /*

@@ -17,7 +17,7 @@ int main()
   if ( lorina::read_verilog( file, verilog_reader( mig ) ) != lorina::return_code::success )
   {
     //std::cout << "[mockturtle] input file invalid\n";
-    return -1;
+    return 1;
   }
   //std::cout << "[mockturtle] testing on a network with " << mig.num_gates() << " gates\n";
   
@@ -33,5 +33,5 @@ int main()
   if ( aqfp.optimize() )
     return 0;
   else
-    return -1;
+    return 2;
 }

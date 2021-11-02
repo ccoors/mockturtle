@@ -1366,8 +1366,8 @@ private:
 
     // NOTE: the depth variable does not take into account the PO branching buffers
 
-    os << "\n(declare-const total Int)\n";
-    os << fmt::format( "(assert (= total (+ {})))\n", fmt::join( bufs, " " ) );
+    //os << "\n(declare-const total Int)\n";
+    //os << fmt::format( "(assert (= total (+ {})))\n", fmt::join( bufs, " " ) );
     //os << fmt::format( "(assert (<= total {}))\n", upper_bound );
     os << "(check-sat)\n";
     //os << "(get-value (total))\n";
