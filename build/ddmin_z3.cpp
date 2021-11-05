@@ -78,28 +78,30 @@ public:
       bool some_complement_is_passing{false};
       while ( start < input_.length() )
       {
-	std::string complement = 
-	  input_.substr( 0, start ) +
-	  input_.substr( start + subset_length, input_.length() - start - subset_length );
+        std::string complement = input_.substr( 0, start );
+        if ( start + subset_length < input_.size() )
+        {
+          complement += input_.substr( start + subset_length, input_.length() - start - subset_length );
+        }
 
-	if ( test( complement ) == Result::FAIL )
-	{
-	  input_ = complement;
-	  n = std::max( n - 1, 2ul );
-	  some_complement_is_passing = true;
-	  break;
-	}
+        if ( test( complement ) == Result::FAIL )
+        {
+          input_ = complement;
+          n = std::max( n - 1, 2ul );
+          some_complement_is_passing = true;
+          break;
+        }
 
-	start += subset_length;
+        start += subset_length;
       }
 
       if ( !some_complement_is_passing )
       {
-	if ( n == input_.length() )
-	{
-	  break;
-	}
-	n = std::min( n << 1, input_.length() );
+        if ( n == input_.length() )
+        {
+          break;
+        }
+        n = std::min( n << 1, input_.length() );
       }
     }
 
@@ -116,27 +118,27 @@ public:
       bool some_complement_is_passing{false};
       while ( start < input_.length() )
       {
-	std::string complement =
-	  input_.substr( 0, start ) +
-	  input_.substr( start + k, input_.length() - start - k );
+        std::string complement =
+          input_.substr( 0, start ) +
+          input_.substr( start + k, input_.length() - start - k );
 
-	if ( test( complement ) == Result::PASS )
-	{
-	  input_ = complement;
-	  n = std::max<int>( n - 1, 2 );
-	  some_complement_is_passing = true;
-	}
+        if ( test( complement ) == Result::PASS )
+        {
+          input_ = complement;
+          n = std::max<int>( n - 1, 2 );
+          some_complement_is_passing = true;
+        }
 
-	start += k;
+        start += k;
       }
 
       if ( !some_complement_is_passing )
       {
-	if ( n == input_.length() )
-	{
-	  break;
-	}
-	n = std::min<std::size_t>( n << 1, input_.length() );
+        if ( n == input_.length() )
+        {
+          break;
+        }
+        n = std::min<std::size_t>( n << 1, input_.length() );
       }
     }
     return input_;

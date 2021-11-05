@@ -18,7 +18,8 @@ Result test( std::string const& str )
 
   std::array<char, 128> buffer;
   std::string res;
-  std::unique_ptr<FILE, decltype( &pclose )> pipe( popen( "./experiments/unit_test; echo $?", "r" ), pclose );
+  FILE* fp = popen( "./experiments/unit_test", "r" );
+  std::unique_ptr<FILE, decltype( &pclose )> pipe( fp, pclose );
   if ( !pipe )
   {
     throw std::runtime_error( "popen() failed" );
@@ -27,22 +28,23 @@ Result test( std::string const& str )
   {
     res += buffer.data();
   }
-  if ( res[0] == '0' )
+  if ( WEXITSTATUS( pclose( fp ) ) == 0 )
   {
-    std::cout << "[i] return value is " << res << " (passing)\n";
+    std::cout << "[i] return value is 0 (passing)\n";
     return Result::PASS;
   }
-  else if ( res[0] == '1' )
+  else if ( WEXITSTATUS( pclose( fp ) ) == 1 )
   {
-    std::cout << "[i] return value is " << res << " (invalid syntax)\n";
+    //std::cout << "[i] return value is 1 (invalid syntax)\n";
     return Result::INCONCLUSIVE;
   }
-  else if ( res[0] == '2' )
+  else if ( WEXITSTATUS( pclose( fp ) ) == 2 )
   {
-    std::cout << "[i] return value is " << res << " (failing)\n";
+    std::cout << "[i] return value is 2 (failing)\n";
     return Result::FAIL;
   }
-  std::cout << "[i] unknown return value " << res << "\n";
+  std::cout << "[i] unknown return value " << WEXITSTATUS( pclose( fp ) ) << "\n";
+  std::cout << "    raw output: " << res;
   return Result::INCONCLUSIVE;
 }
 
@@ -84,28 +86,30 @@ public:
       bool some_complement_is_passing{false};
       while ( start < input_.length() )
       {
-	std::string complement = 
-	  input_.substr( 0, start ) +
-	  input_.substr( start + subset_length, input_.length() - start - subset_length );
+        std::string complement = input_.substr( 0, start );
+        if ( start + subset_length < input_.size() )
+        {
+          complement += input_.substr( start + subset_length, input_.length() - start - subset_length );
+        }
 
-	if ( test( complement ) == Result::FAIL )
-	{
-	  input_ = complement;
-	  n = std::max( n - 1, 2ul );
-	  some_complement_is_passing = true;
-	  break;
-	}
+        if ( test( complement ) == Result::FAIL )
+        {
+          input_ = complement;
+          n = std::max( n - 1, 2ul );
+          some_complement_is_passing = true;
+          break;
+        }
 
-	start += subset_length;
+        start += subset_length;
       }
 
       if ( !some_complement_is_passing )
       {
-	if ( n == input_.length() )
-	{
-	  break;
-	}
-	n = std::min( n << 1, input_.length() );
+        if ( n == input_.length() )
+        {
+          break;
+        }
+        n = std::min( n << 1, input_.length() );
       }
     }
 
@@ -122,27 +126,27 @@ public:
       bool some_complement_is_passing{false};
       while ( start < input_.length() )
       {
-	std::string complement =
-	  input_.substr( 0, start ) +
-	  input_.substr( start + k, input_.length() - start - k );
+        std::string complement =
+          input_.substr( 0, start ) +
+          input_.substr( start + k, input_.length() - start - k );
 
-	if ( test( complement ) == Result::PASS )
-	{
-	  input_ = complement;
-	  n = std::max<int>( n - 1, 2 );
-	  some_complement_is_passing = true;
-	}
+        if ( test( complement ) == Result::PASS )
+        {
+          input_ = complement;
+          n = std::max<int>( n - 1, 2 );
+          some_complement_is_passing = true;
+        }
 
-	start += k;
+        start += k;
       }
 
       if ( !some_complement_is_passing )
       {
-	if ( n == input_.length() )
-	{
-	  break;
-	}
-	n = std::min<std::size_t>( n << 1, input_.length() );
+        if ( n == input_.length() )
+        {
+          break;
+        }
+        n = std::min<std::size_t>( n << 1, input_.length() );
       }
     }
     return input_;
