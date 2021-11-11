@@ -100,7 +100,7 @@ struct write_verilog_params
  * \param ntk Network
  * \param os Output stream
  */
-template<class Ntk>
+template<class Ntk, class Writer=lorina::verilog_writer>
 void write_verilog( Ntk const& ntk, std::ostream& os, write_verilog_params const& ps = {} )
 {
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
@@ -122,7 +122,7 @@ void write_verilog( Ntk const& ntk, std::ostream& os, write_verilog_params const
 
   assert( ntk.is_combinational() && "Network has to be combinational" );
 
-  lorina::verilog_writer writer( os );
+  Writer writer( os );
 
   if constexpr ( is_buffered_network_type_v<Ntk> )
   {
@@ -405,7 +405,7 @@ void write_verilog( Ntk const& ntk, std::ostream& os, write_verilog_params const
  * \param os Output stream
  * \param ps Verilog parameters
  */
-template<class Ntk>
+template<class Ntk, class Writer=lorina::verilog_writer>
 void write_verilog( binding_view<Ntk> const& ntk, std::ostream& os, write_verilog_params const& ps = {} )
 {
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
@@ -422,7 +422,7 @@ void write_verilog( binding_view<Ntk> const& ntk, std::ostream& os, write_verilo
 
   assert( ntk.is_combinational() && "Network has to be combinational" );
 
-  lorina::verilog_writer writer( os );
+  Writer writer( os );
 
   std::vector<std::string> xs, inputs;
   if ( ps.input_names.empty() )
@@ -648,11 +648,11 @@ void write_verilog( binding_view<Ntk> const& ntk, std::ostream& os, write_verilo
  * \param ntk Network
  * \param filename Filename
  */
-template<class Ntk>
+template<class Ntk, class Writer=lorina::verilog_writer>
 void write_verilog( Ntk const& ntk, std::string const& filename, write_verilog_params const& ps = {} )
 {
   std::ofstream os( filename.c_str(), std::ofstream::out );
-  write_verilog( ntk, os, ps );
+  write_verilog<Ntk, Writer>( ntk, os, ps );
   os.close();
 }
 
